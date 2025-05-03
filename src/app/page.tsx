@@ -1,101 +1,112 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useEffect, useState } from "react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Save, Play, BookOpen } from "lucide-react"
+
+export default function Page() {
+  const [token, setToken] = useState("")
+  const [databaseId, setDatabaseId] = useState("")
+  const [message, setMessage] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  useEffect(() => {
+    const savedToken = localStorage.getItem("notion_token")
+    const savedDbId = localStorage.getItem("notion_db")
+    if (savedToken) setToken(savedToken)
+    if (savedDbId) setDatabaseId(savedDbId)
+  }, [])
+
+  const saveSettings = () => {
+    localStorage.setItem("notion_token", token)
+    localStorage.setItem("notion_db", databaseId)
+    setMessage("設定を保存しました")
+  }
+
+  const handleProcess = async () => {
+    setIsProcessing(true)
+    setMessage("処理中…")
+
+    try {
+      const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, databaseId }),
+      })
+      const data = await res.json()
+      setMessage(data.message)
+    } catch (error) {
+      setMessage("エラーが発生しました。もう一度お試しください。")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-2">
+            <BookOpen className="h-8 w-8 text-blue-600 mr-2" />
+            <CardTitle className="text-2xl font-bold">Notion BibTeX Processor</CardTitle>
+          </div>
+          <CardDescription className="text-center">NotionデータベースからBibTeXデータを処理します</CardDescription>
+        </CardHeader>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="token">Notion Token</Label>
+            <Input
+              id="token"
+              type="password"
+              placeholder="secret_xxxxxxxxxxxxxxxxxxxx"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            <p className="text-xs text-muted-foreground">Notionの統合トークンを入力してください</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="databaseId">Database ID</Label>
+            <Input
+              id="databaseId"
+              placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+              value={databaseId}
+              onChange={(e) => setDatabaseId(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">NotionデータベースのIDを入力してください</p>
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex flex-col space-y-4">
+          <div className="flex gap-3 w-full">
+            <Button variant="outline" onClick={saveSettings} className="flex-1">
+              <Save className="mr-2 h-4 w-4" />
+              保存
+            </Button>
+            <Button
+              onClick={handleProcess}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+              disabled={isProcessing || !token || !databaseId}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              {isProcessing ? "処理中..." : "実行"}
+            </Button>
+          </div>
+
+          {message && (
+            <Alert
+              className={`${message.includes("エラー") ? "bg-red-50 border-red-200" : "bg-slate-100 border-slate-200"}`}
+            >
+              <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+        </CardFooter>
+      </Card>
     </div>
-  );
+  )
 }
