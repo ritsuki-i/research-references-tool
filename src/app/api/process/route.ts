@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Client } from "@notionhq/client"
 import { toJSON as parseBibJSON } from "bibtex-parse-js"
 import xml2js from "xml2js"
+import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
 
 type EntryTags = Record<string, string>
 
@@ -33,8 +34,14 @@ export async function POST(req: Request) {
     })
 
     for (const row of results) {
-      const bibBlocks = (row.properties as any).BibTeX.rich_text
-      const rawBib = bibBlocks.map((b: any) => b.plain_text).join("\n")
+      const page = row as PageObjectResponse
+
+      const bibBlocks = (page.properties["BibTeX"] as {
+        type: "rich_text"
+        rich_text: { plain_text: string }[]
+      }).rich_text
+
+      const rawBib = bibBlocks.map(b => b.plain_text).join("\n")
 
       // クリーンアップ
       const cleanBib = rawBib
@@ -49,14 +56,20 @@ export async function POST(req: Request) {
         .replace(/@(\w+)\{([^,]*?)\s+([^,]*?),/, (_m, t, a, b) => `@${t}{${a}${b},`)
 
       // 種類取得
-      const typeMatch = cleanBib.match(/^@(\w+)\{/)  
+      const typeMatch = cleanBib.match(/^@(\w+)\{/)
       const typeKey = typeMatch ? typeMatch[1].toLowerCase() : ""
       const typeDesc = typeMap[typeKey] ?? typeKey
 
       // パース
       const parsedArray = parseBibJSON(cleanBib)
       if (parsedArray.length === 0) continue
-      const entryTags: EntryTags = parsedArray[0].entryTags
+      const rawTags = parsedArray[0].entryTags
+
+      // 小文字キーで正規化（value を string として扱う）
+      const entryTags: EntryTags = {}
+      for (const [key, value] of Object.entries(rawTags)) {
+        entryTags[key.toLowerCase()] = value as string
+      }
 
       // arXiv補完
       if (!entryTags.journal && entryTags.eprint) {
@@ -74,12 +87,12 @@ export async function POST(req: Request) {
       // 著者処理
       const authorsRaw = entryTags.author.split(" and ")
       const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
-      const year2 = entryTags.year.slice(2)
+
       // 会議名取得
       const confName = entryTags.booktitle || entryTags.journal || ""
       const confAbbr = confAbbrev[confName]
 
-                  // スライド用参考文献
+      // スライド用参考文献
       let slideRef: string
       const firstRaw = authorsRaw[0]
       const yearShort = entryTags.year.slice(2)
@@ -145,13 +158,13 @@ export async function POST(req: Request) {
         })
       }
       const normalAuth = isJa ? normalAuthList.join(', ') : formatListEng(normalAuthList)
-            let normalRef: string
+      let normalRef: string
       // arXiv 論文の場合
       if (typeKey === 'misc') {
         normalRef = `${normalAuth}: ${entryTags.title}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
       } else if (typeKey === 'inproceedings') {
         // 会議論文通常参照: In Proceedings of FullName (Abbr)
-        const full = `In Proceedings of ${confName}${confAbbr ? ` (${confAbbr})` : ''}`
+        const full = `In Proceedings of ${confName}`
         normalRef = `${normalAuth}: ${entryTags.title}, ${full}, ${entryTags.year}.`
       } else if (entryTags.volume) {
         normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.journal}, Vol. ${entryTags.volume}, No. ${entryTags.number}, pp. ${entryTags.pages} (${entryTags.year}).`
@@ -162,20 +175,57 @@ export async function POST(req: Request) {
       }
 
       // 更新
-      const props: any = {
-        論文名: { title: [{ text: { content: entryTags.title } }] },
-        "参考文献(スライド)": { rich_text: [{ text: { content: slideRef } }] },
-        参考文献: { rich_text: [{ text: { content: normalRef } }] },
-        種類: { rich_text: [{ text: { content: typeDesc } }] },
-        チェックボックス: { checkbox: false },
+      const props: UpdatePageParameters["properties"] = {
+        論文名: {
+          title: [
+            {
+              type: "text",
+              text: { content: entryTags.title },
+            },
+          ],
+        },
+        "参考文献(スライド)": {
+          rich_text: [
+            {
+              type: "text",
+              text: { content: slideRef },
+            },
+          ],
+        },
+        参考文献: {
+          rich_text: [
+            {
+              type: "text",
+              text: { content: normalRef },
+            },
+          ],
+        },
+        種類: {
+          rich_text: [
+            {
+              type: "text",
+              text: { content: typeDesc },
+            },
+          ],
+        },
+        チェックボックス: {
+          checkbox: false,
+        },
       }
-      if (entryTags.url) props.URL = { url: entryTags.url }
+
+      // URLがある場合だけ追加（型安全に追加）
+      if (entryTags.url) {
+        props.URL = {
+          url: entryTags.url,
+        }
+      }
 
       await notion.pages.update({ page_id: row.id, properties: props })
     }
 
     return NextResponse.json({ message: "✅ 更新完了" })
-  } catch (e: any) {
-    return NextResponse.json({ message: `❌ エラー: ${e.message}` }, { status: 500 })
+  } catch (e) {
+    const err = e as Error
+    return NextResponse.json({ message: `❌ エラー: ${err.message}` }, { status: 500 })
   }
 }

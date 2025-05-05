@@ -41,6 +41,7 @@ export default function Page() {
       setMessage(data.message)
     } catch (error) {
       setMessage("エラーが発生しました。もう一度お試しください。")
+      console.log("エラー文:", error)
     } finally {
       setIsProcessing(false)
     }
