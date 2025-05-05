@@ -13,7 +13,7 @@
 
 1. **Notion Integration トークンを作成**  
    - Notion の「設定とメンバー」→「インテグレーション」→「新しいインテグレーションを作成」  
-   - 名前を入力し（例：BibTeX Tool）、保存後に表示される “Internal Integration Token” をコピー（`secret_…`）。
+   - 名前を入力し（例：BibTeX Tool）、保存後に表示される “Internal Integration Token” をコピー（`ntn_…`）。
 
 2. **テンプレートを複製**  
    - 上記 Notion テンプレートのリンクを開き、右上の「Duplicate」をクリック。  
