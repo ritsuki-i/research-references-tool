@@ -25,11 +25,39 @@ export async function POST(req: Request) {
 
   // 会議名略称マッピング
   const confAbbrev: Record<string, string> = {
-    "The International Conference on Learning Representations": "ICLR",
-    "Advances in Neural Information Processing Systems": "NeurIPS",
-    "SIGKDD Conference on Knowledge Discovery and Data Mining": "KDD",
-    "Conference on Computer Vision and Pattern Recognition": "CVPR",
-    // 他の必要な略称を追加
+    // 機械学習の3大トップカンファレンス
+    "International Conference on Machine Learning": "ICML",             // :contentReference[oaicite:0]{index=0}
+    "International Conference on Learning Representations": "ICLR",    // :contentReference[oaicite:1]{index=1}
+    "Conference on Neural Information Processing Systems": "NeurIPS",  // :contentReference[oaicite:2]{index=2}
+
+    // 人工知能全般系
+    "AAAI Conference on Artificial Intelligence": "AAAI",              // :contentReference[oaicite:3]{index=3}
+    "International Joint Conference on Artificial Intelligence": "IJCAI", // :contentReference[oaicite:4]{index=4}
+
+    // データマイニング＆知識発見
+    "European Conference on Machine Learning and Principles and Practice of Knowledge Discovery in Databases": "ECML PKDD", // :contentReference[oaicite:5]{index=5}
+    "Conference on Knowledge Discovery and Data Mining": "KDD",        // :contentReference[oaicite:6]{index=6}
+
+    // 統計学・AI 結合分野
+    "International Conference on Artificial Intelligence and Statistics": "AISTATS", // :contentReference[oaicite:7]{index=7}
+    "Conference on Uncertainty in Artificial Intelligence": "UAI",     // :contentReference[oaicite:8]{index=8}
+
+    // コンピュータビジョン系
+    "Conference on Computer Vision and Pattern Recognition": "CVPR",    // :contentReference[oaicite:9]{index=9}
+    "IEEE/CVF International Conference on Computer Vision": "ICCV",    // :contentReference[oaicite:10]{index=10}
+    "European Conference on Computer Vision": "ECCV",                  // :contentReference[oaicite:11]{index=11}
+
+    // パターン認識・信号処理系
+    "International Conference on Data Mining": "ICDM",                 // :contentReference[oaicite:12]{index=12}
+    "International Conference on Pattern Recognition": "ICPR",         // :contentReference[oaicite:13]{index=13}
+
+    // 自然言語処理系
+    "Annual Meeting of the Association for Computational Linguistics": "ACL", // :contentReference[oaicite:14]{index=14}
+    "Conference on Empirical Methods in Natural Language Processing": "EMNLP", // :contentReference[oaicite:15]{index=15}
+
+    // 強化学習・理論系（おまけ）
+    "Conference on Learning Theory": "COLT",                            // :contentReference[oaicite:16]{index=16}
+    "International Conference on Autonomous Agents and Multiagent Systems": "AAMAS", // :contentReference[oaicite:17]{index=17}
   }
 
   try {
@@ -63,7 +91,6 @@ export async function POST(req: Request) {
       // 種類取得
       const typeMatch = cleanBib.match(/^@(\w+)\{/)
       const typeKey = typeMatch ? typeMatch[1].toLowerCase() : ""
-      const typeDesc = typeMap[typeKey] ?? typeKey
 
       // パース
       const parsedArray = parseBibJSON(cleanBib)
@@ -74,6 +101,36 @@ export async function POST(req: Request) {
       const entryTags: EntryTags = {}
       for (const [key, value] of Object.entries(rawTags)) {
         entryTags[key.toLowerCase()] = value as string
+      }
+
+      // 著者処理
+      const authorsRaw = entryTags.author.split(" and ")
+      const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
+
+      // 会議名取得
+      const confNameRaw = entryTags.booktitle ?? entryTags.journal ?? "";
+      const confName = String(confNameRaw);
+      // 会議名略称／短縮語の適用
+      const shortenMap: Record<string, string> = {
+        International: "Int.",
+        Conference: "Conf.",
+        Recognition: "Recognit.",
+      }
+      let confAbbreviation: string
+      if (confAbbrev[confName]) {
+        confAbbreviation = confAbbrev[confName]
+      } else {
+        const parenMatch = confName.match(/\(([^)]+)\)/)
+        if (parenMatch) {
+          // 括弧内の略称を使用
+          confAbbreviation = parenMatch[1]
+        } else {
+          // 標準短縮語を適用
+          confAbbreviation = confName
+            .split(" ")
+            .map(w => shortenMap[w] || w)
+            .join(" ")
+        }
       }
 
       // arXiv補完
@@ -89,19 +146,21 @@ export async function POST(req: Request) {
         entryTags.year = feedEntry.published[0].slice(0, 4)
       }
 
-      // 著者処理
-      const authorsRaw = entryTags.author.split(" and ")
-      const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
-
-      // 会議名取得
-      const confName = entryTags.booktitle || entryTags.journal || ""
-      const confAbbr = confAbbrev[confName]
-
       // スライド用参考文献
       let slideRef: string
       const firstRaw = authorsRaw[0]
       const yearShort = entryTags.year.slice(2)
-      if (typeKey === "inproceedings") {
+      if (typeKey === 'misc') {
+        const surname = isJa
+          ? firstRaw.split(/, | /)[0]
+          : firstRaw.includes(', ')
+            ? firstRaw.split(', ')[0]
+            : firstRaw.split(' ').pop()!;
+        slideRef =
+          `[${surname}, ’${yearShort}] ${surname}: ${entryTags.title}, ` +
+          `arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`;
+      }
+      else if (typeKey === "inproceedings") {
         // 会議論文: 略称とページ番号付き
         const parts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
         const lastName = isJa ? parts[0] : parts[parts.length - 1]
@@ -113,8 +172,8 @@ export async function POST(req: Request) {
           ? lastName
           : (authorsRaw.length > 1 ? `${lastName}, ${initials}, et al.` : `${lastName}, ${initials}`)
         let abbreviation: string;
-        if (confAbbr) {
-          abbreviation = confAbbr;
+        if (confAbbreviation) {
+          abbreviation = confAbbreviation;
         } else {
           const parenMatch = confName.match(/\(([^)]+)\)/);
           abbreviation = parenMatch ? parenMatch[1] : confName.split(' ').map(w => w[0].toUpperCase()).join('');
@@ -177,6 +236,16 @@ export async function POST(req: Request) {
         normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.publisher} (${entryTags.year}).`
       } else {
         normalRef = `${normalAuth}: ${entryTags.title} (${entryTags.year}).`
+      }
+
+      // 基本の種類ラベル
+      const baseType = typeMap[typeKey] ?? typeKey
+      // 種類に実際の媒体名（雑誌名／会議名）を追加
+      let typeDesc = baseType
+      if (typeKey === 'article' && entryTags.journal) {
+        typeDesc = `${baseType} (${entryTags.journal})`
+      } else if (typeKey === 'inproceedings' && confName) {
+        typeDesc = `${baseType} (${confName})`
       }
 
       // 更新
