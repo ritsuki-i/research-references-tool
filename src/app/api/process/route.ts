@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import { Client } from "@notionhq/client"
-import { toJSON as parseBibJSON } from "bibtex-parse-js"
+import { toJSON } from "bibtex-parse-js"
+const parseBibJSON = toJSON as (input: string) => {
+  citationKey: string
+  entryType: string
+  entryTags: Record<string, string>
+}[]
 import xml2js from "xml2js"
 import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
 
