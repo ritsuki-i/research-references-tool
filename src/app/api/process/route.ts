@@ -23,12 +23,43 @@ export async function POST(req: Request) {
     misc: "arXiv論文",
   }
 
+  function formatPages(raw: string): string {
+    // 連続ハイフンを1つにまとめ
+    const range = raw.replace(/-+/g, "-");
+    // 先頭に p をつける
+    return `p${range}`;
+  }
+
+  function parseAuthor(a: string): { family: string; initials: string } {
+    let family: string;
+    let givenParts: string[];
+
+    if (a.includes(",")) {
+      // カンマ区切り "Family, Given1 Given2 …"
+      const [fam, ...rest] = a.split(/\s*,\s*/);
+      family = fam;
+      // rest は ["Given1 Given2 …"] なので、結合して空白分割
+      givenParts = rest.join(" ").trim().split(/\s+/);
+    } else {
+      // 空白区切り "Given1 Given2 … Family"
+      const parts = a.trim().split(/\s+/);
+      family = parts.pop()!;         // 最後を family
+      givenParts = parts;           // 残りが名の各パート
+    }
+
+    const initials = givenParts
+      .map(name => name[0].toUpperCase() + ".")
+      .join(" ");
+
+    return { family, initials };
+  }
+
   // 会議名略称マッピング
   const confAbbrev: Record<string, string> = {
     // 機械学習の3大トップカンファレンス
     "International Conference on Machine Learning": "ICML",             // :contentReference[oaicite:0]{index=0}
     "International Conference on Learning Representations": "ICLR",    // :contentReference[oaicite:1]{index=1}
-    "Conference on Neural Information Processing Systems": "NeurIPS",  // :contentReference[oaicite:2]{index=2}
+    "Neural Information Processing Systems": "NeurIPS",  // :contentReference[oaicite:2]{index=2}
 
     // 人工知能全般系
     "AAAI Conference on Artificial Intelligence": "AAAI",              // :contentReference[oaicite:3]{index=3}
@@ -104,27 +135,38 @@ export async function POST(req: Request) {
       }
 
       // 著者処理
-      const authorsRaw = entryTags.author.split(" and ")
+      const authorsRaw = entryTags.author.split(/\s+and\s+/);
+      const n = authorsRaw.length;
       const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
 
       // 会議名取得
       const confNameRaw = entryTags.booktitle ?? entryTags.journal ?? "";
       const confName = String(confNameRaw);
-      // 会議名略称／短縮語の適用
-      const shortenMap: Record<string, string> = {
-        International: "Int.",
-        Conference: "Conf.",
-        Recognition: "Recognit.",
-      }
+      // ① マッピングキーのうち、confNameRaw に含まれるものを検索
+      const matchedKey = Object.keys(confAbbrev).find(key => {
+        const a = confNameRaw.toLowerCase();  // 小文字化してケース無視
+        const b = key.toLowerCase();          // 小文字化してケース無視
+
+        // a が b を含む、または b が a を含む
+        return a.includes(b) || b.includes(a);
+      });
       let confAbbreviation: string
-      if (confAbbrev[confName]) {
-        confAbbreviation = confAbbrev[confName]
+      if (matchedKey) {
+        // マップにあったキーなら、その略称を使う
+        confAbbreviation = confAbbrev[matchedKey];
       } else {
         const parenMatch = confName.match(/\(([^)]+)\)/)
         if (parenMatch) {
           // 括弧内の略称を使用
           confAbbreviation = parenMatch[1]
         } else {
+          // 会議名略称／短縮語の適用
+          const shortenMap: Record<string, string> = {
+            International: "Int.",
+            Conference: "Conf.",
+            Recognition: "Recognit.",
+          }
+
           // 標準短縮語を適用
           confAbbreviation = confName
             .split(" ")
@@ -156,8 +198,25 @@ export async function POST(req: Request) {
           : firstRaw.includes(', ')
             ? firstRaw.split(', ')[0]
             : firstRaw.split(' ').pop()!;
+        let slideAuth: string;
+        if (n === 1) {
+          // 1名 → "Family, I."
+          const { family, initials } = parseAuthor(authorsRaw[0]);
+          slideAuth = `${family}, ${initials}`;
+
+        } else if (n === 2) {
+          // 2名 → "Family1, I. and Family2, J."
+          const a1 = parseAuthor(authorsRaw[0]);
+          const a2 = parseAuthor(authorsRaw[1]);
+          slideAuth = `${a1.family}, ${a1.initials} and ${a2.family}, ${a2.initials}`;
+
+        } else {
+          // 3名以上 → "Family1, I., et al."
+          const first = parseAuthor(authorsRaw[0]);
+          slideAuth = `${first.family}, ${first.initials}, et al.`;
+        }
         slideRef =
-          `[${surname}, ’${yearShort}] ${surname}: ${entryTags.title}, ` +
+          `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ` +
           `arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`;
       }
       else if (typeKey === "inproceedings") {
@@ -168,9 +227,23 @@ export async function POST(req: Request) {
         if (!isJa) {
           initials = parts.slice(0, parts.length - 1).map(n => n[0] + ".").join(" ")
         }
-        const slideAuth = isJa
-          ? lastName
-          : (authorsRaw.length > 1 ? `${lastName}, ${initials}, et al.` : `${lastName}, ${initials}`)
+        let slideAuth: string;
+        if (n === 1) {
+          // 1名 → "Family, I."
+          const { family, initials } = parseAuthor(authorsRaw[0]);
+          slideAuth = `${family}, ${initials}`;
+
+        } else if (n === 2) {
+          // 2名 → "Family1, I. and Family2, J."
+          const a1 = parseAuthor(authorsRaw[0]);
+          const a2 = parseAuthor(authorsRaw[1]);
+          slideAuth = `${a1.family}, ${a1.initials} and ${a2.family}, ${a2.initials}`;
+
+        } else {
+          // 3名以上 → "Family1, I., et al."
+          const first = parseAuthor(authorsRaw[0]);
+          slideAuth = `${first.family}, ${first.initials}, et al.`;
+        }
         let abbreviation: string;
         if (confAbbreviation) {
           abbreviation = confAbbreviation;
@@ -178,7 +251,7 @@ export async function POST(req: Request) {
           const parenMatch = confName.match(/\(([^)]+)\)/);
           abbreviation = parenMatch ? parenMatch[1] : confName.split(' ').map(w => w[0].toUpperCase()).join('');
         }
-        const pages = entryTags.pages ? `pp. ${entryTags.pages}` : ""
+        const pages = entryTags.pages ? formatPages(entryTags.pages) : ""
         slideRef = `[${lastName}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
       } else if (isJa) {
         // 日本語論文
@@ -187,7 +260,18 @@ export async function POST(req: Request) {
         const slideAuth = authorsRaw.length > 1 ? surname + "ら" : surname
         let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal || entryTags.booktitle}`
         if (entryTags.volume) {
-          base += `, Vol. ${entryTags.volume}, No. ${entryTags.number}, pp. ${entryTags.pages}`
+          // 巻は必ず出す
+          base += `, Vol. ${entryTags.volume}`;
+
+          // 号があれば追加
+          if (entryTags.number) {
+            base += `, No. ${entryTags.number}`;
+          }
+
+          // ページがあれば追加（“p12-14” 形式でひとつハイフン）
+          if (entryTags.pages) {
+            base += `, ${formatPages(entryTags.pages)}`;
+          }
         }
         slideRef = `${base} (${entryTags.year}).`
       } else {
@@ -195,10 +279,35 @@ export async function POST(req: Request) {
         const parts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
         const lastName = parts[parts.length - 1]
         const initials = parts.slice(0, -1).map(n => n[0] + ".").join(" ")
-        const slideAuth = authorsRaw.length > 1 ? `${lastName}, ${initials}, et al.` : `${lastName}, ${initials}`
+        let slideAuth: string;
+        if (n === 1) {
+          // 1名 → "Family, I."
+          const { family, initials } = parseAuthor(authorsRaw[0]);
+          slideAuth = `${family}, ${initials}`;
+        } else if (n === 2) {
+          // 2名 → "Family1, I. and Family2, J."
+          const a1 = parseAuthor(authorsRaw[0]);
+          const a2 = parseAuthor(authorsRaw[1]);
+          slideAuth = `${a1.family}, ${a1.initials} and ${a2.family}, ${a2.initials}`;
+        } else {
+          // 3名以上 → "Family1, I., et al."
+          const first = parseAuthor(authorsRaw[0]);
+          slideAuth = `${first.family}, ${first.initials}, et al.`;
+        }
         let base = `[${lastName}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal}`
         if (entryTags.volume) {
-          base += `, Vol. ${entryTags.volume}, No. ${entryTags.number}, pp. ${entryTags.pages}`
+          // 巻は必ず出す
+          base += `, Vol. ${entryTags.volume}`;
+
+          // 号があれば追加
+          if (entryTags.number) {
+            base += `, No. ${entryTags.number}`;
+          }
+
+          // ページがあれば追加（“p12-14” 形式でひとつハイフン）
+          if (entryTags.pages) {
+            base += `, ${formatPages(entryTags.pages)}`;
+          }
         }
         slideRef = `${base} (${entryTags.year}).`
       }
@@ -214,12 +323,9 @@ export async function POST(req: Request) {
         normalAuthList = authorsRaw.map(a => a.replace(/, | /g, ''))
       } else {
         normalAuthList = authorsRaw.map(a => {
-          if (a.includes(', ')) return a
-          const p = a.split(/, | /)
-          const last = p.pop()!
-          const init = p.map(n => n[0] + '.').join(' ')
-          return `${last}, ${init}`
-        })
+          const { family, initials } = parseAuthor(a);
+          return `${family}, ${initials}`;  // 例: "Loftus, T. J."
+        });
       }
       const normalAuth = isJa ? normalAuthList.join(', ') : formatListEng(normalAuthList)
       let normalRef: string
@@ -231,7 +337,20 @@ export async function POST(req: Request) {
         const full = `In Proceedings of ${confName}`
         normalRef = `${normalAuth}: ${entryTags.title}, ${full}, ${entryTags.year}.`
       } else if (entryTags.volume) {
-        normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.journal}, Vol. ${entryTags.volume}, No. ${entryTags.number}, pp. ${entryTags.pages} (${entryTags.year}).`
+        let base = "";
+        // 巻は必ず出す
+        base += `, Vol. ${entryTags.volume}`;
+
+        // 号があれば追加
+        if (entryTags.number) {
+          base += `, No. ${entryTags.number}`;
+        }
+
+        // ページがあれば追加（“p12-14” 形式でひとつハイフン）
+        if (entryTags.pages) {
+          base += `, ${formatPages(entryTags.pages)}`;
+        }
+        normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.journal}, ` + base + ` (${entryTags.year}).`
       } else if (entryTags.publisher) {
         normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.publisher} (${entryTags.year}).`
       } else {
