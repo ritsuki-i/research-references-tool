@@ -193,11 +193,6 @@ export async function POST(req: Request) {
       const firstRaw = authorsRaw[0]
       const yearShort = entryTags.year.slice(2)
       if (typeKey === 'misc') {
-        const surname = isJa
-          ? firstRaw.split(/, | /)[0]
-          : firstRaw.includes(', ')
-            ? firstRaw.split(', ')[0]
-            : firstRaw.split(' ').pop()!;
         let slideAuth: string;
         if (n === 1) {
           // 1名 → "Family, I."
@@ -215,6 +210,11 @@ export async function POST(req: Request) {
           const first = parseAuthor(authorsRaw[0]);
           slideAuth = `${first.family}, ${first.initials}, et al.`;
         }
+        const surname = isJa
+          ? slideAuth.split(/, | /)[0]
+          : slideAuth.includes(', ')
+            ? slideAuth.split(', ')[0]
+            : slideAuth.split(' ').pop()!;
         slideRef =
           `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ` +
           `arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`;
@@ -248,7 +248,12 @@ export async function POST(req: Request) {
           abbreviation = parenMatch ? parenMatch[1] : confName.split(' ').map(w => w[0].toUpperCase()).join('');
         }
         const pages = entryTags.pages ? formatPages(entryTags.pages) : ""
-        slideRef = `[${lastName}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
+        const surname = isJa
+          ? slideAuth.split(/, | /)[0]
+          : slideAuth.includes(', ')
+            ? slideAuth.split(', ')[0]
+            : slideAuth.split(' ').pop()!;
+        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
       } else if (isJa) {
         // 日本語論文
         const nameParts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
@@ -289,7 +294,12 @@ export async function POST(req: Request) {
           const first = parseAuthor(authorsRaw[0]);
           slideAuth = `${first.family}, ${first.initials}, et al.`;
         }
-        let base = `[${lastName}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal}`
+        const surname = isJa
+          ? slideAuth.split(/, | /)[0]
+          : slideAuth.includes(', ')
+            ? slideAuth.split(', ')[0]
+            : slideAuth.split(' ').pop()!;
+        let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal}`
         if (entryTags.volume) {
           // 巻は必ず出す
           base += `, Vol. ${entryTags.volume}`;
