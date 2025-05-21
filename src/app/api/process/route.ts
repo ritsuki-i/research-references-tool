@@ -223,10 +223,6 @@ export async function POST(req: Request) {
         // 会議論文: 略称とページ番号付き
         const parts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
         const lastName = isJa ? parts[0] : parts[parts.length - 1]
-        let initials = ""
-        if (!isJa) {
-          initials = parts.slice(0, parts.length - 1).map(n => n[0] + ".").join(" ")
-        }
         let slideAuth: string;
         if (n === 1) {
           // 1名 → "Family, I."
