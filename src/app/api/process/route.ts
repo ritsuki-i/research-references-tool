@@ -222,7 +222,6 @@ export async function POST(req: Request) {
       else if (typeKey === "inproceedings") {
         // 会議論文: 略称とページ番号付き
         const parts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
-        const lastName = isJa ? parts[0] : parts[parts.length - 1]
         let slideAuth: string;
         if (n === 1) {
           // 1名 → "Family, I."
@@ -278,7 +277,6 @@ export async function POST(req: Request) {
       } else {
         // 英文論文
         const parts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
-        const lastName = parts[parts.length - 1]
         let slideAuth: string;
         if (n === 1) {
           // 1名 → "Family, I."
