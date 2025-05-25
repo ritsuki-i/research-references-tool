@@ -335,7 +335,12 @@ export async function POST(req: Request) {
         normalRef = `${normalAuth}: ${entryTags.title}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
       } else if (typeKey === 'inproceedings') {
         // 会議論文通常参照: In Proceedings of FullName (Abbr)
-        const full = `In Proceedings of ${confName}`
+        let full;
+        if (matchedKey) {
+          full = `In Proceedings of ${confName} (${confAbbreviation})`
+        } else {
+          full = `In Proceedings of ${confName}`
+        }
         normalRef = `${normalAuth}: ${entryTags.title}, ${full}, ${entryTags.year}.`
       } else if (entryTags.volume) {
         let base = "";
