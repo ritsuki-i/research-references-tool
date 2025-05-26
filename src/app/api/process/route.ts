@@ -30,19 +30,48 @@ export async function POST(req: Request) {
     return `p${range}`;
   }
 
+  /** LaTeX の簡易アクセント表記を Unicode 文字に置換 */
+  function decodeLatexAccents(str: string): string {
+
+    // accentChar：' ` ^ " ~ のいずれか
+    // letter    ：A–Z,a–z のいずれか
+    const re = /\\(['`^"~])\{?([A-Za-z])\}?/g;
+    const matches = Array.from(str.matchAll(re));
+    // matches は [ [ fullMatch, accentChar, letter, index, input ], … ] の配列になります
+
+    const maps: Record<string, Record<string, string>> = {
+      "'": { a: "á", A: "Á", e: "é", E: "É", i: "í", I: "Í", o: "ó", O: "Ó", u: "ú", U: "Ú", n: "ñ", N: "Ñ" },
+      "`": { a: "à", A: "À", e: "è", E: "È", i: "ì", I: "Ì", o: "ò", O: "Ò", u: "ù", U: "Ù" },
+      "^": { a: "â", A: "Â", e: "ê", E: "Ê", i: "î", I: "Î", o: "ô", O: "Ô", u: "û", U: "Û" },
+      "\"": { a: "ä", A: "Ä", e: "ë", E: "Ë", i: "ï", I: "Ï", o: "ö", O: "Ö", u: "ü", U: "Ü" },
+      "~": { a: "ã", A: "Ã", o: "õ", O: "Õ", n: "ñ", N: "Ñ" },
+    };
+
+    const result = str.replace(re, (_m, accent: string, letter: string) => {
+      const table = maps[accent];
+      return (table && table[letter]) || letter;
+    });
+
+    return result;
+  }
+
+
   function parseAuthor(a: string): { family: string; initials: string } {
+
+    const normalized = decodeLatexAccents(a);
+
     let family: string;
     let givenParts: string[];
 
-    if (a.includes(",")) {
+    if (normalized.includes(",")) {
       // カンマ区切り "Family, Given1 Given2 …"
-      const [fam, ...rest] = a.split(/\s*,\s*/);
+      const [fam, ...rest] = normalized.split(/\s*,\s*/);
       family = fam;
       // rest は ["Given1 Given2 …"] なので、結合して空白分割
       givenParts = rest.join(" ").trim().split(/\s+/);
     } else {
       // 空白区切り "Given1 Given2 … Family"
-      const parts = a.trim().split(/\s+/);
+      const parts = normalized.trim().split(/\s+/);
       family = parts.pop()!;         // 最後を family
       givenParts = parts;           // 残りが名の各パート
     }
