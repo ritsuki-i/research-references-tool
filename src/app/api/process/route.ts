@@ -36,7 +36,6 @@ export async function POST(req: Request) {
     // accentChar：' ` ^ " ~ のいずれか
     // letter    ：A–Z,a–z のいずれか
     const re = /\\(['`^"~])\{?([A-Za-z])\}?/g;
-    const matches = Array.from(str.matchAll(re));
     // matches は [ [ fullMatch, accentChar, letter, index, input ], … ] の配列になります
 
     const maps: Record<string, Record<string, string>> = {
