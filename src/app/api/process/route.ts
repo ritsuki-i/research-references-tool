@@ -8,6 +8,7 @@ const parseBibJSON = toJSON as (input: string) => {
 }[]
 import xml2js from "xml2js"
 import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
+import { Volume } from "lucide-react"
 
 type EntryTags = Record<string, string>
 
@@ -273,13 +274,15 @@ export async function POST(req: Request) {
           const parenMatch = confName.match(/\(([^)]+)\)/);
           abbreviation = parenMatch ? parenMatch[1] : confName.split(' ').map(w => w[0].toUpperCase()).join('');
         }
+        const vol = entryTags.volume ? entryTags.volume : ""
+        const number = entryTags.volume ? entryTags.number : ""
         const pages = entryTags.pages ? formatPages(entryTags.pages) : ""
         const surname = isJa
           ? slideAuth.split(/, | /)[0]
           : slideAuth.includes(', ')
             ? slideAuth.split(', ')[0]
             : slideAuth.split(' ').pop()!;
-        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
+        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${vol ? `, Vol. ${vol}` : ""}${number ? `, No. ${number}` : ""}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
       } else if (isJa) {
         // 日本語論文
         const nameParts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
@@ -369,11 +372,24 @@ export async function POST(req: Request) {
         } else {
           full = `In Proceedings of ${confName}`
         }
+        if (entryTags.volume) {
+          full += `, Vol. ${entryTags.volume}`;
+        }
+
+        // 号があれば追加
+        if (entryTags.number) {
+          full += `, No. ${entryTags.number}`;
+        }
+
+        // ページがあれば追加（“p12-14” 形式でひとつハイフン）
+        if (entryTags.pages) {
+          full += `, ${formatPages(entryTags.pages)}`;
+        }
         normalRef = `${normalAuth}: ${entryTags.title}, ${full}, ${entryTags.year}.`
       } else if (entryTags.volume) {
         let base = "";
         // 巻は必ず出す
-        base += `, Vol. ${entryTags.volume}`;
+        base += `Vol. ${entryTags.volume}`;
 
         // 号があれば追加
         if (entryTags.number) {
