@@ -8,7 +8,6 @@ const parseBibJSON = toJSON as (input: string) => {
 }[]
 import xml2js from "xml2js"
 import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
-import { Volume } from "lucide-react"
 
 type EntryTags = Record<string, string>
 
