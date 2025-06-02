@@ -384,7 +384,7 @@ export async function POST(req: Request) {
         if (entryTags.pages) {
           full += `, ${formatPages(entryTags.pages)}`;
         }
-        normalRef = `${normalAuth}: ${entryTags.title}, ${full}, ${entryTags.year}.`
+        normalRef = `${normalAuth}: ${entryTags.title}, ${full} (${entryTags.year}).`
       } else if (entryTags.volume) {
         let base = "";
         // 巻は必ず出す
