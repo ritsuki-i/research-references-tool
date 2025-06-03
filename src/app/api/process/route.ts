@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     // 連続ハイフンを1つにまとめ
     const range = raw.replace(/-+/g, "-");
     // 先頭に p をつける
-    return `p${range}`;
+    return `pp. ${range}`;
   }
 
   /** LaTeX の簡易アクセント表記を Unicode 文字に置換 */
