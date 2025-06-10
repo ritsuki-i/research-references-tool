@@ -3,7 +3,7 @@
 **Notionテンプレート**＋**Next.jsアプリ**で、BibTeX を自動解析し Notion データベースにタイトル・参考文献を反映します。
 
 - 🗂 **Notion テンプレート**（構造のみ、サンプルデータなし）  
-  https://mousy-archduke-e39.notion.site/1e942aec698780f98a46f4a5dd26d44c?v=1e942aec698781b1bccf000cb8f06254&pvs=74  
+  https://mousy-archduke-e39.notion.site/20e42aec698780a49728ea9347bbed9a?v=20e42aec6987813a95ce000cba5805b6
 - 🚀 **Webアプリ**  
   https://research-references-tool.vercel.app/  
 
@@ -66,3 +66,4 @@
 | 概要                      | Rich text  | 引用件数何件とか, どんな論文か手動入力          |
 
  
+
