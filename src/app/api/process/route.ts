@@ -30,6 +30,65 @@ export async function POST(req: Request) {
     return `pp. ${range}`;
   }
 
+  function toTitleCase(title: string): string {
+    const smallWords = new Set([
+      "a", "an", "the",
+      "and", "but", "or", "for", "nor",
+      "of", "in", "to", "for", "at", "by", "up",
+    ])
+
+    const hasInternalCaps = (word: string): boolean =>
+      /[a-z][A-Z]|[A-Z][a-z].*[A-Z]|[A-Z]{2,}/.test(word)
+
+    const capitalizeWord = (word: string): string => {
+      if (!word || hasInternalCaps(word)) return word
+      return word[0].toUpperCase() + word.slice(1).toLowerCase()
+    }
+
+    const splitToken = (token: string): { prefix: string; core: string; suffix: string } => {
+      const prefix = token.match(/^[^A-Za-z0-9]*/)?.[0] ?? ""
+      const suffix = token.match(/[^A-Za-z0-9]*$/)?.[0] ?? ""
+      const core = token.slice(prefix.length, token.length - suffix.length)
+      return { prefix, core, suffix }
+    }
+
+    const tokens = title.trim().split(/\s+/)
+    let forceCapitalizeNext = true
+
+    return tokens.map((token, tokenIndex) => {
+      const { prefix, core, suffix } = splitToken(token)
+      if (!core) return token
+
+      const normalized = core.split("-").map((part, partIndex, parts) => {
+        if (!part || hasInternalCaps(part)) return part
+        const lower = part.toLowerCase()
+        const isFirst = tokenIndex === 0 && partIndex === 0
+        const isLast = tokenIndex === tokens.length - 1 && partIndex === parts.length - 1
+        const shouldLowercase = !forceCapitalizeNext && !isFirst && !isLast && smallWords.has(lower)
+        return shouldLowercase ? lower : capitalizeWord(part)
+      }).join("-")
+
+      forceCapitalizeNext = /:$/.test(suffix)
+      return `${prefix}${normalized}${suffix}`
+    }).join(" ")
+  }
+
+  function normalizeConferenceName(raw: string): string {
+    return raw
+      .trim()
+      .replace(/^(?:in\s+)?proceedings\s+of\s+(?:the\s+)?/i, "")
+      .replace(/^\d{4}\s+/, "")
+      .replace(/^\d+(?:st|nd|rd|th)\s+/i, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  function stripDuplicateConferenceAbbreviation(name: string, abbreviation?: string): string {
+    if (!abbreviation) return name
+    const escaped = abbreviation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    return name.replace(new RegExp(`\\s*\\(${escaped}\\)\\s*$`, "i"), "").trim()
+  }
+
   /** LaTeX の簡易アクセント表記を Unicode 文字に置換 */
   function decodeLatexAccents(str: string): string {
 
@@ -88,6 +147,7 @@ export async function POST(req: Request) {
     "International Conference on Machine Learning": "ICML",             // :contentReference[oaicite:0]{index=0}
     "International Conference on Learning Representations": "ICLR",    // :contentReference[oaicite:1]{index=1}
     "Neural Information Processing Systems": "NeurIPS",  // :contentReference[oaicite:2]{index=2}
+    "Unifying Representations in Neural Models":"UniReps",
 
     // 人工知能全般系
     "AAAI Conference on Artificial Intelligence": "AAAI",              // :contentReference[oaicite:3]{index=3}
@@ -117,6 +177,11 @@ export async function POST(req: Request) {
     // 強化学習・理論系（おまけ）
     "Conference on Learning Theory": "COLT",                            // :contentReference[oaicite:16]{index=16}
     "International Conference on Autonomous Agents and Multiagent Systems": "AAMAS", // :contentReference[oaicite:17]{index=17}
+  }
+
+  const journalAbbrev: Record<string, string> = {
+    "Transactions on Machine Learning Research": "TMLR",
+    "TMLR": "TMLR",
   }
 
   try {
@@ -169,7 +234,7 @@ export async function POST(req: Request) {
 
       // 会議名取得
       const confNameRaw = entryTags.booktitle ?? entryTags.journal ?? "";
-      const confName = String(confNameRaw);
+      const confName = normalizeConferenceName(String(confNameRaw));
       // ① マッピングキーのうち、confNameRaw に含まれるものを検索
       const matchedKey = Object.keys(confAbbrev).find(key => {
         const a = confNameRaw.toLowerCase();  // 小文字化してケース無視
@@ -202,6 +267,26 @@ export async function POST(req: Request) {
             .join(" ")
         }
       }
+      const journalNameRaw = String(entryTags.journal ?? "")
+      const matchedJournalKey = Object.keys(journalAbbrev).find(key => {
+        const a = journalNameRaw.toLowerCase()
+        const b = key.toLowerCase()
+        return a.includes(b) || b.includes(a)
+      })
+      const journalDisplayName = matchedJournalKey
+        ? `${matchedJournalKey} (${journalAbbrev[matchedJournalKey]})`
+        : journalNameRaw
+      const confDisplayName = stripDuplicateConferenceAbbreviation(confName, confAbbreviation)
+      const titleText = toTitleCase(entryTags.title)
+      const isConferenceLikeArticle =
+        typeKey === "article" &&
+        !!entryTags.journal &&
+        (
+          /^(?:in\s+)?proceedings\s+of/i.test(confNameRaw) ||
+          /\b(conference|symposium|workshop|meeting)\b/i.test(confNameRaw) ||
+          !!matchedKey
+        )
+      const effectiveTypeKey = isConferenceLikeArticle ? "inproceedings" : typeKey
 
       // arXiv補完
       if (!entryTags.journal && entryTags.eprint) {
@@ -220,7 +305,7 @@ export async function POST(req: Request) {
       let slideRef: string
       const firstRaw = authorsRaw[0]
       const yearShort = entryTags.year.slice(2)
-      if (typeKey === 'misc') {
+      if (effectiveTypeKey === 'misc') {
         let slideAuth: string;
         if (n === 1) {
           // 1名 → "Family, I."
@@ -244,10 +329,10 @@ export async function POST(req: Request) {
             ? slideAuth.split(', ')[0]
             : slideAuth.split(' ').pop()!;
         slideRef =
-          `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ` +
+          `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, ` +
           `arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`;
       }
-      else if (typeKey === "inproceedings") {
+      else if (effectiveTypeKey === "inproceedings") {
         // 会議論文: 略称とページ番号付き
         let slideAuth: string;
         if (n === 1) {
@@ -281,13 +366,13 @@ export async function POST(req: Request) {
           : slideAuth.includes(', ')
             ? slideAuth.split(', ')[0]
             : slideAuth.split(' ').pop()!;
-        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, In ${abbreviation}${vol ? `, Vol. ${vol}` : ""}${number ? `, No. ${number}` : ""}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
+        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, Proceedings of ${confDisplayName}${abbreviation && abbreviation.toLowerCase() !== confDisplayName.toLowerCase() ? ` (${abbreviation})` : ""}${vol ? `, Vol. ${vol}` : ""}${number ? `, No. ${number}` : ""}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
       } else if (isJa) {
         // 日本語論文
         const nameParts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
         const surname = nameParts[0]
         const slideAuth = authorsRaw.length > 1 ? surname + "ら" : surname
-        let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal || entryTags.booktitle}`
+        let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, ${entryTags.journal || entryTags.booktitle}`
         if (entryTags.volume) {
           // 巻は必ず出す
           base += `, Vol. ${entryTags.volume}`;
@@ -325,7 +410,7 @@ export async function POST(req: Request) {
           : slideAuth.includes(', ')
             ? slideAuth.split(', ')[0]
             : slideAuth.split(' ').pop()!;
-        let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${entryTags.title}, ${entryTags.journal}`
+        let base = `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, ${journalDisplayName}`
         if (entryTags.volume) {
           // 巻は必ず出す
           base += `, Vol. ${entryTags.volume}`;
@@ -344,6 +429,18 @@ export async function POST(req: Request) {
       }
 
       // 通常参考文献
+      if (effectiveTypeKey === "inproceedings") {
+        const slideVenue = confAbbreviation ? `In ${confAbbreviation}` : `Proceedings of the ${confDisplayName}`
+        slideRef = slideRef.replace(
+          /Proceedings of .*?(?=(?:, Vol\.|, No\.|, pp\.| \())/,
+          slideVenue
+        )
+        if (confAbbreviation) {
+          const escaped = confAbbreviation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          slideRef = slideRef.replace(new RegExp(`In ${escaped}\\s*\\(${escaped}\\)`), `In ${confAbbreviation}`)
+        }
+      }
+
       const formatListEng = (list: string[]) => {
         if (list.length === 1) return list[0]
         if (list.length === 2) return `${list[0]} and ${list[1]}`
@@ -361,15 +458,13 @@ export async function POST(req: Request) {
       const normalAuth = isJa ? normalAuthList.join(', ') : formatListEng(normalAuthList)
       let normalRef: string
       // arXiv 論文の場合
-      if (typeKey === 'misc') {
-        normalRef = `${normalAuth}: ${entryTags.title}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
-      } else if (typeKey === 'inproceedings') {
-        // 会議論文通常参照: In Proceedings of FullName (Abbr)
-        let full;
-        if (matchedKey) {
-          full = `In Proceedings of ${confName} (${confAbbreviation})`
-        } else {
-          full = `In Proceedings of ${confName}`
+      if (effectiveTypeKey === 'misc') {
+        normalRef = `${normalAuth}: ${titleText}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
+      } else if (effectiveTypeKey === 'inproceedings') {
+        // 会議論文通常参照: Proceedings of FullName (Abbr)
+        let full = `Proceedings of the ${confDisplayName}`
+        if (confAbbreviation && confAbbreviation.toLowerCase() !== confDisplayName.toLowerCase()) {
+          full += ` (${confAbbreviation})`
         }
         if (entryTags.volume) {
           full += `, Vol. ${entryTags.volume}`;
@@ -384,7 +479,7 @@ export async function POST(req: Request) {
         if (entryTags.pages) {
           full += `, ${formatPages(entryTags.pages)}`;
         }
-        normalRef = `${normalAuth}: ${entryTags.title}, ${full} (${entryTags.year}).`
+        normalRef = `${normalAuth}: ${titleText}, ${full} (${entryTags.year}).`
       } else if (entryTags.volume) {
         let base = "";
         // 巻は必ず出す
@@ -399,20 +494,22 @@ export async function POST(req: Request) {
         if (entryTags.pages) {
           base += `, ${formatPages(entryTags.pages)}`;
         }
-        normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.journal}, ` + base + ` (${entryTags.year}).`
+        normalRef = `${normalAuth}: ${titleText}, ${journalDisplayName}, ` + base + ` (${entryTags.year}).`
+      } else if (effectiveTypeKey === 'article' && entryTags.journal) {
+        normalRef = `${normalAuth}: ${titleText}, ${journalDisplayName} (${entryTags.year}).`
       } else if (entryTags.publisher) {
-        normalRef = `${normalAuth}: ${entryTags.title}, ${entryTags.publisher} (${entryTags.year}).`
+        normalRef = `${normalAuth}: ${titleText}, ${entryTags.publisher} (${entryTags.year}).`
       } else {
-        normalRef = `${normalAuth}: ${entryTags.title} (${entryTags.year}).`
+        normalRef = `${normalAuth}: ${titleText} (${entryTags.year}).`
       }
 
       // 基本の種類ラベル
-      const baseType = typeMap[typeKey] ?? typeKey
+      const baseType = typeMap[effectiveTypeKey] ?? effectiveTypeKey
       // 種類に実際の媒体名（雑誌名／会議名）を追加
       let typeDesc = baseType
-      if (typeKey === 'article' && entryTags.journal) {
-        typeDesc = `${baseType} (${entryTags.journal})`
-      } else if (typeKey === 'inproceedings' && confName) {
+      if (effectiveTypeKey === 'article' && entryTags.journal) {
+        typeDesc = `${baseType} (${journalDisplayName})`
+      } else if (effectiveTypeKey === 'inproceedings' && confName) {
         typeDesc = `${baseType} (${confName})`
       }
 
@@ -422,7 +519,7 @@ export async function POST(req: Request) {
           title: [
             {
               type: "text",
-              text: { content: entryTags.title },
+              text: { content: titleText },
             },
           ],
         },
