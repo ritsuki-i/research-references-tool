@@ -40,7 +40,7 @@ export default function Page() {
       const data = await res.json()
       setMessage(data.message)
     } catch (error) {
-      setMessage("エラーが発生しました。もう一度お試しください。")
+      setMessage("エラーが発生しました．もう一度お試しください．")
       console.log("エラー文:", error)
     } finally {
       setIsProcessing(false)

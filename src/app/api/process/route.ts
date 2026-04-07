@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   }
 
   function toTitleCase(title: string): string {
+    const sanitizedTitle = title.replace(/[{}]/g, "")
     const smallWords = new Set([
       "a", "an", "the",
       "and", "but", "or", "for", "nor",
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
       return { prefix, core, suffix }
     }
 
-    const tokens = title.trim().split(/\s+/)
+    const tokens = sanitizedTitle.trim().split(/\s+/)
     let forceCapitalizeNext = true
 
     return tokens.map((token, tokenIndex) => {

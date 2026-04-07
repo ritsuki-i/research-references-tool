@@ -1,6 +1,6 @@
 # Research References Tool
 
-**Notionテンプレート**＋**Next.jsアプリ**で、BibTeX を自動解析し Notion データベースにタイトル・参考文献を反映します。
+**Notionテンプレート**＋**Next.jsアプリ**で、BibTeX を自動解析し Notion データベースにタイトル・参考文献を反映します．
 
 - 🗂 **Notion テンプレート**（構造のみ、サンプルデータなし）  
   https://mousy-archduke-e39.notion.site/20e42aec698780a49728ea9347bbed9a?v=20e42aec6987813a95ce000cba5805b6
@@ -13,28 +13,28 @@
 
 1. **Notion Integration トークンを作成**  
    - Notion の「設定とメンバー」→「インテグレーション」→「新しいインテグレーションを作成」  
-   - 名前を入力し（例：BibTeX Tool）、保存後に表示される “Internal Integration Token” をコピー（`ntn_…`）。
+   - 名前を入力し（例：BibTeX Tool）、保存後に表示される “Internal Integration Token” をコピー（`ntn_…`）．
 
 2. **テンプレートを複製**  
-   - 上記 Notion テンプレートのリンクを開き、右上の「Duplicate」をクリック。  
+   - 上記 Notion テンプレートのリンクを開き、右上の「Duplicate」をクリック．  
    - 以下プロパティを持つ空のデータベースが複製されます：  
      `チェックボックス`、`BibTeX`、`論文名`、`参考文献(スライド)`、`参考文献`、`種類`、`URL`
 
 3. **インテグレーションを招待**  
-   - 複製したデータベースの「Share」→「Invite」→ 作成したインテグレーションを選択。  
-   - 読み書きの権限を付与。
+   - 複製したデータベースの「Share」→「Invite」→ 作成したインテグレーションを選択．  
+   - 読み書きの権限を付与．
 
 4. **データベースIDを取得**  
    - 複製したデータベースのページURLから、  
      ```
      https://www.notion.so/…/<DATABASE_ID>?…
      ```  
-     の `<DATABASE_ID>`（32文字の英数字部分）をコピー。
+     の `<DATABASE_ID>`（32文字の英数字部分）をコピー．
 
 5. **Webアプリに入力**  
    - https://research-references-tool.vercel.app/ を開き、  
    - 「Notion Token」「Database ID」を貼り付けて「保存」、  
-   - 「実行」ボタンを押すとチェックした行が自動更新されます。
+   - 「実行」ボタンを押すとチェックした行が自動更新されます．
 
 ---
 
