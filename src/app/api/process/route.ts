@@ -12,8 +12,14 @@ import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build
 type EntryTags = Record<string, string>
 type ArxivFeed = {
   feed?: {
-    entry?: Array<Record<string, unknown>> | Record<string, unknown>
+    entry?: ArxivEntry[] | ArxivEntry
   }
+}
+type ArxivEntry = {
+  title?: string[]
+  id?: string[]
+  published?: string[]
+  "arxiv:comment"?: string[]
 }
 
 export async function POST(req: Request) {
@@ -30,7 +36,7 @@ export async function POST(req: Request) {
 
   function formatPages(raw: string): string {
     // 連続ハイフンを1つにまとめ
-    const range = raw.replace(/\s*-\s*/g, "--")
+    const range = raw.replace(/\s*-+\s*/g, "--")
     // 先頭に p をつける
     return `pp. ${range}`;
   }
