@@ -103,6 +103,14 @@ export async function POST(req: Request) {
       .trim()
   }
 
+  function makeNotionPdfFileName(title: string): string {
+    const sanitized = title.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
+    const suffix = ".pdf"
+    const maxBaseLength = 100 - suffix.length
+    const base = sanitized.slice(0, maxBaseLength).trim()
+    return `${base || "paper"}${suffix}`
+  }
+
   async function fetchArxivXml(
     url: string,
     context: { mode: "title" | "id"; query: string }
@@ -691,7 +699,7 @@ export async function POST(req: Request) {
         props["論文PDF"] = {
           files: [
             {
-              name: `${titleText}.pdf`,
+              name: makeNotionPdfFileName(titleText),
               type: "external",
               external: { url: arxivMatch.pdfUrl },
             },
