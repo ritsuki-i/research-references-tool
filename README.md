@@ -1,5 +1,6 @@
 # Research References Tool
-*ibTeX を自動解析し、Notion データベースにタイトル・参考文献を反映し
+BibTeX を解析し、Notion データベースにタイトル・参考文献などを反映
+
 - **Notion テンプレート**  
   https://www.notion.so/33c42aec6987805c9626d5149e410862?v=ed242aec698783edb2a288bcdfec29a1&source=copy_link
 - **Webアプリ**  
