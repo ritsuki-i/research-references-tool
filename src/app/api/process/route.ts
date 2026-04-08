@@ -10,6 +10,11 @@ import xml2js from "xml2js"
 import { UpdatePageParameters, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints"
 
 type EntryTags = Record<string, string>
+type ArxivFeed = {
+  feed?: {
+    entry?: Array<Record<string, unknown>> | Record<string, unknown>
+  }
+}
 
 export async function POST(req: Request) {
   const { token, databaseId } = await req.json()
@@ -88,6 +93,98 @@ export async function POST(req: Request) {
     if (!abbreviation) return name
     const escaped = abbreviation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     return name.replace(new RegExp(`\\s*\\(${escaped}\\)\\s*$`, "i"), "").trim()
+  }
+
+  function normalizeLookupTitle(title: string): string {
+    return title
+      .replace(/[{}]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  }
+
+  async function fetchArxivXml(
+    url: string,
+    context: { mode: "title" | "id"; query: string }
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(url)
+      const text = await response.text()
+      if (!response.ok) {
+        console.error("arXiv query:", context)
+        console.error("arXiv status:", response.status)
+        console.error("arXiv content-type:", response.headers.get("content-type"))
+        console.error("arXiv final url:", response.url)
+        console.error("arXiv body head:", text.slice(0, 200))
+        return null
+      }
+      const trimmed = text.trimStart()
+      if (!trimmed.startsWith("<")) {
+        console.error("arXiv query:", context)
+        console.error("arXiv status:", response.status)
+        console.error("arXiv content-type:", response.headers.get("content-type"))
+        console.error("arXiv final url:", response.url)
+        console.error("arXiv body head:", text.slice(0, 200))
+        return null
+      }
+      return text
+    } catch (error) {
+      console.error("arXiv query:", context)
+      console.error("arXiv fetch error:", error)
+      return null
+    }
+  }
+
+  async function findArxivByTitle(title: string): Promise<{ absUrl: string; pdfUrl: string } | null> {
+    const queryTitle = title.replace(/[{}]/g, "").trim()
+    if (!queryTitle) return null
+
+    const params = new URLSearchParams({
+      search_query: `ti:"${queryTitle}"`,
+      start: "0",
+      max_results: "5",
+    })
+    const xml = await fetchArxivXml(
+      `https://export.arxiv.org/api/query?${params.toString()}`,
+      { mode: "title", query: queryTitle }
+    )
+    if (!xml) return null
+
+    let xmlObj: ArxivFeed
+    try {
+      xmlObj = await xml2js.parseStringPromise(xml)
+    } catch (error) {
+      console.error("arXiv query:", { mode: "title", query: queryTitle })
+      console.error("arXiv XML parse error:", error)
+      console.error("arXiv body head:", xml.slice(0, 200))
+      return null
+    }
+    const entries = xmlObj.feed?.entry
+      ? (Array.isArray(xmlObj.feed.entry) ? xmlObj.feed.entry : [xmlObj.feed.entry])
+      : []
+
+    const expected = normalizeLookupTitle(queryTitle)
+    for (const entry of entries) {
+      const entryTitle = String(entry.title?.[0] ?? "").replace(/\s+/g, " ").trim()
+      const normalizedEntryTitle = normalizeLookupTitle(entryTitle)
+      if (
+        normalizedEntryTitle === expected ||
+        normalizedEntryTitle.includes(expected) ||
+        expected.includes(normalizedEntryTitle)
+      ) {
+        const id = String(entry.id?.[0] ?? "").trim()
+        if (!id) continue
+        const absUrl = id.replace(/^http:\/\//, "https://")
+        const arxivId = absUrl.split("/abs/")[1]
+        if (!arxivId) continue
+        return {
+          absUrl,
+          pdfUrl: `https://arxiv.org/pdf/${arxivId}.pdf`,
+        }
+      }
+    }
+
+    return null
   }
 
   /** LaTeX の簡易アクセント表記を Unicode 文字に置換 */
@@ -279,6 +376,17 @@ export async function POST(req: Request) {
         : journalNameRaw
       const confDisplayName = stripDuplicateConferenceAbbreviation(confName, confAbbreviation)
       const titleText = toTitleCase(entryTags.title)
+      const arxivMatch = await findArxivByTitle(titleText)
+      const alphaXivUrl = arxivMatch?.absUrl
+        ? arxivMatch.absUrl.replace("https://arxiv.org/abs/", "https://www.alphaxiv.org/abs/")
+        : null
+      // console.log("arXiv title lookup:", {
+      //   title: titleText,
+      //   found: !!arxivMatch,
+      //   absUrl: arxivMatch?.absUrl ?? null,
+      //   alphaXivUrl,
+      //   pdfUrl: arxivMatch?.pdfUrl ?? null,
+      // })
       const isConferenceLikeArticle =
         typeKey === "article" &&
         !!entryTags.journal &&
@@ -291,15 +399,26 @@ export async function POST(req: Request) {
 
       // arXiv補完
       if (!entryTags.journal && entryTags.eprint) {
-        const xml = await fetch(
-          `http://export.arxiv.org/api/query?id_list=${entryTags.eprint}`
-        ).then(r => r.text())
-        const xmlObj = await xml2js.parseStringPromise(xml)
-        const feedEntry = Array.isArray(xmlObj.feed.entry)
-          ? xmlObj.feed.entry[0]
-          : xmlObj.feed.entry
-        entryTags.journal = feedEntry["arxiv:comment"]?.[0] ?? `arXiv preprint arXiv:${entryTags.eprint}`
-        entryTags.year = feedEntry.published[0].slice(0, 4)
+        const xml = await fetchArxivXml(
+          `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(entryTags.eprint)}`,
+          { mode: "id", query: entryTags.eprint }
+        )
+        if (xml) {
+          try {
+            const xmlObj = await xml2js.parseStringPromise(xml)
+            const feedEntry = Array.isArray(xmlObj.feed.entry)
+              ? xmlObj.feed.entry[0]
+              : xmlObj.feed.entry
+            if (feedEntry) {
+              entryTags.journal = feedEntry["arxiv:comment"]?.[0] ?? `arXiv preprint arXiv:${entryTags.eprint}`
+              entryTags.year = feedEntry.published[0].slice(0, 4)
+            }
+          } catch (error) {
+            console.error("arXiv query:", { mode: "id", query: entryTags.eprint })
+            console.error("arXiv XML parse error:", error)
+            console.error("arXiv body head:", xml.slice(0, 200))
+          }
+        }
       }
 
       // スライド用参考文献
@@ -554,10 +673,33 @@ export async function POST(req: Request) {
       }
 
       // URLがある場合だけ追加（型安全に追加）
-      if (entryTags.url) {
+      if (alphaXivUrl) {
+        props.URL = {
+          url: alphaXivUrl,
+        }
+        console.log("URL source:", { title: titleText, source: "alphaxiv", url: alphaXivUrl })
+      } else if (entryTags.url) {
         props.URL = {
           url: entryTags.url,
         }
+        console.log("URL source:", { title: titleText, source: "bibtex", url: entryTags.url })
+      } else {
+        console.log("URL source:", { title: titleText, source: "none", url: null })
+      }
+
+      if (arxivMatch?.pdfUrl) {
+        props["論文PDF"] = {
+          files: [
+            {
+              name: `${titleText}.pdf`,
+              type: "external",
+              external: { url: arxivMatch.pdfUrl },
+            },
+          ],
+        }
+        console.log("PDF source:", { title: titleText, attached: true, url: arxivMatch.pdfUrl })
+      } else {
+        console.log("PDF source:", { title: titleText, attached: false, url: null })
       }
 
       await notion.pages.update({ page_id: row.id, properties: props })
