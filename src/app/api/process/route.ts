@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   function formatPages(raw: string): string {
     // 連続ハイフンを1つにまとめ
-    const range = raw.replace(/-+/g, "-");
+    const range = raw.replace(/\s*-\s*/g, "--")
     // 先頭に p をつける
     return `pp. ${range}`;
   }
