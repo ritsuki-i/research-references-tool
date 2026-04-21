@@ -1,5 +1,5 @@
 # Research References Tool
-BibTeX を解析し、Notion データベースにタイトル・参考文献などを反映
+BibTeX を解析し、Notion データベースにタイトル，引用記述などを自動入力する論文管理ツール
 
 - **Notion テンプレート**  
   https://www.notion.so/33c42aec6987805c9626d5149e410862?v=ed242aec698783edb2a288bcdfec29a1&source=copy_link
@@ -62,8 +62,7 @@ BibTeX を解析し、Notion データベースにタイトル・参考文献な
 | 種類 | Rich text | 雑誌論文 / 会議論文 / arXiv など |
 | URL | URL | alphaXiv の URL |
 | 論文PDF | Files | 論文 PDF ファイル |
-| 備考 | Rich text | 手動メモ用 |
-                | Rich text  | 引用件数何件とか, どんな論文か手動入力          |
+| 備考 | Rich text  | 引用件数何件とか, どんな論文か手動入力 |
 
  
 
