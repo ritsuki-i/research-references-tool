@@ -109,6 +109,14 @@ export async function POST(req: Request) {
       .trim()
   }
 
+  function normalizeVenueLookup(name: string): string {
+    return name
+      .replace(/[{}]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  }
+
   function makeNotionPdfFileName(title: string): string {
     const sanitized = title.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
     const suffix = ".pdf"
@@ -147,6 +155,43 @@ export async function POST(req: Request) {
       console.error("arXiv fetch error:", error)
       return null
     }
+  }
+
+  function makeArxivUrls(absUrl: string): { absUrl: string; pdfUrl: string } | null {
+    const normalizedAbsUrl = absUrl.replace(/^http:\/\//, "https://")
+    const arxivId = normalizedAbsUrl.split("/abs/")[1]
+    if (!arxivId) return null
+    return {
+      absUrl: normalizedAbsUrl,
+      pdfUrl: `https://arxiv.org/pdf/${arxivId}.pdf`,
+    }
+  }
+
+  async function findArxivById(eprint: string): Promise<{ absUrl: string; pdfUrl: string } | null> {
+    const arxivId = eprint.trim()
+    if (!arxivId) return null
+
+    const xml = await fetchArxivXml(
+      `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(arxivId)}`,
+      { mode: "id", query: arxivId }
+    )
+    if (!xml) return null
+
+    let xmlObj: ArxivFeed
+    try {
+      xmlObj = await xml2js.parseStringPromise(xml)
+    } catch (error) {
+      console.error("arXiv query:", { mode: "id", query: arxivId })
+      console.error("arXiv XML parse error:", error)
+      console.error("arXiv body head:", xml.slice(0, 200))
+      return null
+    }
+
+    const feedEntry = Array.isArray(xmlObj.feed?.entry)
+      ? xmlObj.feed.entry[0]
+      : xmlObj.feed?.entry
+    const id = String(feedEntry?.id?.[0] ?? "").trim()
+    return id ? makeArxivUrls(id) : makeArxivUrls(`https://arxiv.org/abs/${arxivId}`)
   }
 
   async function findArxivByTitle(title: string): Promise<{ absUrl: string; pdfUrl: string } | null> {
@@ -188,13 +233,8 @@ export async function POST(req: Request) {
       ) {
         const id = String(entry.id?.[0] ?? "").trim()
         if (!id) continue
-        const absUrl = id.replace(/^http:\/\//, "https://")
-        const arxivId = absUrl.split("/abs/")[1]
-        if (!arxivId) continue
-        return {
-          absUrl,
-          pdfUrl: `https://arxiv.org/pdf/${arxivId}.pdf`,
-        }
+        const urls = makeArxivUrls(id)
+        if (urls) return urls
       }
     }
 
@@ -222,7 +262,7 @@ export async function POST(req: Request) {
       return (table && table[letter]) || letter;
     });
 
-    return result;
+    return result.replace(/[{}]/g, "");
   }
 
 
@@ -345,18 +385,21 @@ export async function POST(req: Request) {
       const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
 
       // 会議名取得
-      const confNameRaw = entryTags.booktitle ?? entryTags.journal ?? "";
+      const confNameRaw = entryTags.booktitle ?? "";
       const confName = normalizeConferenceName(String(confNameRaw));
       // ① マッピングキーのうち、confNameRaw に含まれるものを検索
       const matchedKey = Object.keys(confAbbrev).find(key => {
+        if (!confNameRaw.trim()) return false
         const a = confNameRaw.toLowerCase();  // 小文字化してケース無視
         const b = key.toLowerCase();          // 小文字化してケース無視
 
         // a が b を含む、または b が a を含む
         return a.includes(b) || b.includes(a);
       });
-      let confAbbreviation: string
-      if (matchedKey) {
+      let confAbbreviation = ""
+      if (!confName) {
+        confAbbreviation = ""
+      } else if (matchedKey) {
         // マップにあったキーなら、その略称を使う
         confAbbreviation = confAbbrev[matchedKey];
       } else {
@@ -381,16 +424,22 @@ export async function POST(req: Request) {
       }
       const journalNameRaw = String(entryTags.journal ?? "")
       const matchedJournalKey = Object.keys(journalAbbrev).find(key => {
-        const a = journalNameRaw.toLowerCase()
-        const b = key.toLowerCase()
-        return a.includes(b) || b.includes(a)
+        const a = normalizeVenueLookup(journalNameRaw)
+        const b = normalizeVenueLookup(key)
+        const abbreviation = normalizeVenueLookup(journalAbbrev[key])
+        return a === b || a === abbreviation
       })
       const journalDisplayName = matchedJournalKey
         ? `${matchedJournalKey} (${journalAbbrev[matchedJournalKey]})`
         : journalNameRaw
-      const confDisplayName = stripDuplicateConferenceAbbreviation(confName, confAbbreviation)
+      const confDisplayName = confName
+        ? stripDuplicateConferenceAbbreviation(confName, confAbbreviation)
+        : "booktitle missing"
       const titleText = toTitleCase(entryTags.title)
-      const arxivMatch = await findArxivByTitle(titleText)
+      const arxivMatchFromEprint = entryTags.eprint
+        ? await findArxivById(entryTags.eprint)
+        : null
+      const arxivMatch = arxivMatchFromEprint ?? await findArxivByTitle(titleText)
       const alphaXivUrl = arxivMatch?.absUrl
         ? arxivMatch.absUrl.replace("https://arxiv.org/abs/", "https://www.alphaxiv.org/abs/")
         : null
@@ -405,9 +454,8 @@ export async function POST(req: Request) {
         typeKey === "article" &&
         !!entryTags.journal &&
         (
-          /^(?:in\s+)?proceedings\s+of/i.test(confNameRaw) ||
-          /\b(conference|symposium|workshop|meeting)\b/i.test(confNameRaw) ||
-          !!matchedKey
+          /^(?:in\s+)?proceedings\s+of/i.test(entryTags.journal) ||
+          /\b(conference|symposium|workshop|meeting)\b/i.test(entryTags.journal)
         )
       const effectiveTypeKey = isConferenceLikeArticle ? "inproceedings" : typeKey
 
@@ -643,8 +691,8 @@ export async function POST(req: Request) {
       let typeDesc = baseType
       if (effectiveTypeKey === 'article' && entryTags.journal) {
         typeDesc = `${baseType} (${journalDisplayName})`
-      } else if (effectiveTypeKey === 'inproceedings' && confName) {
-        typeDesc = `${baseType} (${confName})`
+      } else if (effectiveTypeKey === 'inproceedings') {
+        typeDesc = `${baseType} (${confName || "booktitle missing"})`
       }
 
       // 更新
