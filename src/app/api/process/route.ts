@@ -101,6 +101,15 @@ export async function POST(req: Request) {
     return name.replace(new RegExp(`\\s*\\(${escaped}\\)\\s*$`, "i"), "").trim()
   }
 
+  function makeConferenceInitialism(name: string): string {
+    return name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(w => w[0]?.toUpperCase() ?? "")
+      .join("")
+  }
+
   function normalizeLookupTitle(title: string): string {
     return title
       .replace(/[{}]/g, "")
@@ -335,6 +344,8 @@ export async function POST(req: Request) {
     "Transactions on Machine Learning Research": "TMLR",
     "TMLR": "TMLR",
   }
+  const missingBooktitleMessage = "booktitleの情報がないよ！！"
+  const missingJournalMessage = "journalの情報がないよ！！"
 
   try {
     const { results } = await notion.databases.query({
@@ -431,10 +442,10 @@ export async function POST(req: Request) {
       })
       const journalDisplayName = matchedJournalKey
         ? `${matchedJournalKey} (${journalAbbrev[matchedJournalKey]})`
-        : journalNameRaw
+        : journalNameRaw || (typeKey === "article" ? missingJournalMessage : "")
       const confDisplayName = confName
         ? stripDuplicateConferenceAbbreviation(confName, confAbbreviation)
-        : "booktitle missing"
+        : missingBooktitleMessage
       const titleText = toTitleCase(entryTags.title)
       const arxivMatchFromEprint = entryTags.eprint
         ? await findArxivById(entryTags.eprint)
@@ -458,6 +469,9 @@ export async function POST(req: Request) {
           /\b(conference|symposium|workshop|meeting)\b/i.test(entryTags.journal)
         )
       const effectiveTypeKey = isConferenceLikeArticle ? "inproceedings" : typeKey
+      if (effectiveTypeKey === "article" && !entryTags.journal) {
+        entryTags.booktitle = missingJournalMessage
+      }
 
       // arXiv補完
       if (!entryTags.journal && entryTags.eprint) {
@@ -538,7 +552,7 @@ export async function POST(req: Request) {
           abbreviation = confAbbreviation;
         } else {
           const parenMatch = confName.match(/\(([^)]+)\)/);
-          abbreviation = parenMatch ? parenMatch[1] : confName.split(' ').map(w => w[0].toUpperCase()).join('');
+          abbreviation = parenMatch ? parenMatch[1] : makeConferenceInitialism(confName);
         }
         const vol = entryTags.volume ? entryTags.volume : ""
         const number = entryTags.volume ? entryTags.number : ""
@@ -612,7 +626,7 @@ export async function POST(req: Request) {
 
       // 通常参考文献
       if (effectiveTypeKey === "inproceedings") {
-        const slideVenue = confAbbreviation ? `In ${confAbbreviation}` : `Proceedings of the ${confDisplayName}`
+        const slideVenue = confAbbreviation ? `In ${confAbbreviation}` : confName ? `Proceedings of the ${confDisplayName}` : confDisplayName
         slideRef = slideRef.replace(
           /Proceedings of .*?(?=(?:, Vol\.|, No\.|, pp\.| \())/,
           slideVenue
@@ -644,7 +658,7 @@ export async function POST(req: Request) {
         normalRef = `${normalAuth}: ${titleText}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
       } else if (effectiveTypeKey === 'inproceedings') {
         // 会議論文通常参照: Proceedings of FullName (Abbr)
-        let full = `Proceedings of the ${confDisplayName}`
+        let full = confName ? `Proceedings of the ${confDisplayName}` : confDisplayName
         if (confAbbreviation && confAbbreviation.toLowerCase() !== confDisplayName.toLowerCase()) {
           full += ` (${confAbbreviation})`
         }
@@ -677,7 +691,7 @@ export async function POST(req: Request) {
           base += `, ${formatPages(entryTags.pages)}`;
         }
         normalRef = `${normalAuth}: ${titleText}, ${journalDisplayName}, ` + base + ` (${entryTags.year}).`
-      } else if (effectiveTypeKey === 'article' && entryTags.journal) {
+      } else if (effectiveTypeKey === 'article') {
         normalRef = `${normalAuth}: ${titleText}, ${journalDisplayName} (${entryTags.year}).`
       } else if (entryTags.publisher) {
         normalRef = `${normalAuth}: ${titleText}, ${entryTags.publisher} (${entryTags.year}).`
@@ -689,10 +703,10 @@ export async function POST(req: Request) {
       const baseType = typeMap[effectiveTypeKey] ?? effectiveTypeKey
       // 種類に実際の媒体名（雑誌名／会議名）を追加
       let typeDesc = baseType
-      if (effectiveTypeKey === 'article' && entryTags.journal) {
+      if (effectiveTypeKey === 'article') {
         typeDesc = `${baseType} (${journalDisplayName})`
       } else if (effectiveTypeKey === 'inproceedings') {
-        typeDesc = `${baseType} (${confName || "booktitle missing"})`
+        typeDesc = `${baseType} (${confName || missingBooktitleMessage})`
       }
 
       // 更新
