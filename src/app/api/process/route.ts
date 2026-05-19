@@ -562,7 +562,7 @@ export async function POST(req: Request) {
           : slideAuth.includes(', ')
             ? slideAuth.split(', ')[0]
             : slideAuth.split(' ').pop()!;
-        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, Proceedings of ${confDisplayName}${abbreviation && abbreviation.toLowerCase() !== confDisplayName.toLowerCase() ? ` (${abbreviation})` : ""}${vol ? `, Vol. ${vol}` : ""}${number ? `, No. ${number}` : ""}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
+        slideRef = `[${surname}, ’${yearShort}] ${slideAuth}: ${titleText}, In Proceedings of ${confDisplayName}${abbreviation && abbreviation.toLowerCase() !== confDisplayName.toLowerCase() ? ` (${abbreviation})` : ""}${vol ? `, Vol. ${vol}` : ""}${number ? `, No. ${number}` : ""}${pages ? `, ${pages}` : ""} (${entryTags.year}).`
       } else if (isJa) {
         // 日本語論文
         const nameParts = firstRaw.includes(", ") ? firstRaw.split(", ") : firstRaw.split(" ")
@@ -658,7 +658,7 @@ export async function POST(req: Request) {
         normalRef = `${normalAuth}: ${titleText}, arXiv preprint arXiv:${entryTags.eprint} (${entryTags.year}).`
       } else if (effectiveTypeKey === 'inproceedings') {
         // 会議論文通常参照: Proceedings of FullName (Abbr)
-        let full = confName ? `Proceedings of the ${confDisplayName}` : confDisplayName
+        let full = confName ? `In Proceedings of the ${confDisplayName}` : confDisplayName
         if (confAbbreviation && confAbbreviation.toLowerCase() !== confDisplayName.toLowerCase()) {
           full += ` (${confAbbreviation})`
         }
