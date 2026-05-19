@@ -278,6 +278,11 @@ export async function POST(req: Request) {
   function parseAuthor(a: string): { family: string; initials: string } {
 
     const normalized = decodeLatexAccents(a);
+    const familyInitialOverrides: Record<string, { family: string; givenPrefix: string[] }> = {
+      "Bickford Smith": { family: "Bickford", givenPrefix: ["Smith"] },
+    };
+    const normalizeFamilyParticles = (name: string): string =>
+      name.replace(/\b(Van|Der|De|Den|Ten|Ter|Von)\b/g, particle => particle.toLowerCase());
 
     let family: string;
     let givenParts: string[];
@@ -288,6 +293,11 @@ export async function POST(req: Request) {
       family = fam;
       // rest は ["Given1 Given2 …"] なので、結合して空白分割
       givenParts = rest.join(" ").trim().split(/\s+/);
+      const override = familyInitialOverrides[family];
+      if (override) {
+        family = override.family;
+        givenParts = [...override.givenPrefix, ...givenParts];
+      }
     } else {
       // 空白区切り "Given1 Given2 … Family"
       const parts = normalized.trim().split(/\s+/);
@@ -299,7 +309,7 @@ export async function POST(req: Request) {
       .map(name => name[0].toUpperCase() + ".")
       .join(" ");
 
-    return { family, initials };
+    return { family: normalizeFamilyParticles(family), initials };
   }
 
   // 会議名略称マッピング
@@ -626,7 +636,7 @@ export async function POST(req: Request) {
 
       // 通常参考文献
       if (effectiveTypeKey === "inproceedings") {
-        const slideVenue = confAbbreviation ? `In ${confAbbreviation}` : confName ? `Proceedings of the ${confDisplayName}` : confDisplayName
+        const slideVenue = confAbbreviation ? `${confAbbreviation}` : confName ? `Proceedings of the ${confDisplayName}` : confDisplayName
         slideRef = slideRef.replace(
           /Proceedings of .*?(?=(?:, Vol\.|, No\.|, pp\.| \())/,
           slideVenue
