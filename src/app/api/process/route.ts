@@ -405,8 +405,18 @@ export async function POST(req: Request) {
       const n = authorsRaw.length;
       const isJa = /[\u3000-\u9fff]/.test(authorsRaw[0])
 
+      const journalNameRaw = String(entryTags.journal ?? "")
+      const isConferenceLikeArticle =
+        typeKey === "article" &&
+        !!journalNameRaw &&
+        (
+          /^(?:in\s+)?proceedings\s+of/i.test(journalNameRaw) ||
+          /\b(conference|symposium|workshop|meeting)\b/i.test(journalNameRaw)
+        )
+      const effectiveTypeKey = isConferenceLikeArticle ? "inproceedings" : typeKey
+
       // 会議名取得
-      const confNameRaw = entryTags.booktitle ?? "";
+      const confNameRaw = entryTags.booktitle ?? (isConferenceLikeArticle ? journalNameRaw : "");
       const confName = normalizeConferenceName(String(confNameRaw));
       // ① マッピングキーのうち、confNameRaw に含まれるものを検索
       const matchedKey = Object.keys(confAbbrev).find(key => {
@@ -443,7 +453,6 @@ export async function POST(req: Request) {
             .join(" ")
         }
       }
-      const journalNameRaw = String(entryTags.journal ?? "")
       const matchedJournalKey = Object.keys(journalAbbrev).find(key => {
         const a = normalizeVenueLookup(journalNameRaw)
         const b = normalizeVenueLookup(key)
@@ -471,14 +480,6 @@ export async function POST(req: Request) {
       //   alphaXivUrl,
       //   pdfUrl: arxivMatch?.pdfUrl ?? null,
       // })
-      const isConferenceLikeArticle =
-        typeKey === "article" &&
-        !!entryTags.journal &&
-        (
-          /^(?:in\s+)?proceedings\s+of/i.test(entryTags.journal) ||
-          /\b(conference|symposium|workshop|meeting)\b/i.test(entryTags.journal)
-        )
-      const effectiveTypeKey = isConferenceLikeArticle ? "inproceedings" : typeKey
       if (effectiveTypeKey === "article" && !entryTags.journal) {
         entryTags.booktitle = missingJournalMessage
       }
@@ -646,6 +647,7 @@ export async function POST(req: Request) {
           slideRef = slideRef.replace(new RegExp(`In ${escaped}\\s*\\(${escaped}\\)`), `In ${confAbbreviation}`)
         }
       }
+      const citationLabel = slideRef.match(/^\[[^\]]+\]/)?.[0] ?? ""
 
       const formatListEng = (list: string[]) => {
         if (list.length === 1) return list[0]
@@ -708,6 +710,7 @@ export async function POST(req: Request) {
       } else {
         normalRef = `${normalAuth}: ${titleText} (${entryTags.year}).`
       }
+      normalRef = `${citationLabel} ${normalRef}`.trimStart()
 
       // 基本の種類ラベル
       const baseType = typeMap[effectiveTypeKey] ?? effectiveTypeKey
