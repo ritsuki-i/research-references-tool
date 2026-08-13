@@ -36,9 +36,9 @@ export async function POST(req: Request) {
 
   function formatPages(raw: string): string {
     // 連続ハイフンを1つにまとめ
-    const range = raw.replace(/\s*-+\s*/g, "--")
+    const range = raw.trim().replace(/\s*-+\s*/g, "--")
     // 先頭に p をつける
-    return `pp. ${range}`;
+    return `${range.includes("--") ? "pp." : "p."} ${range}`;
   }
 
   function toTitleCase(title: string): string {
@@ -281,8 +281,41 @@ export async function POST(req: Request) {
     const familyInitialOverrides: Record<string, { family: string; givenPrefix: string[] }> = {
       "Bickford Smith": { family: "Bickford", givenPrefix: ["Smith"] },
     };
-    const normalizeFamilyParticles = (name: string): string =>
-      name.replace(/\b(Van|Der|De|Den|Ten|Ter|Von)\b/g, particle => particle.toLowerCase());
+    const particleSequences: { words: string[]; canonical: string }[] = [
+      { words: ["van", "den"], canonical: "van den" },
+      { words: ["van", "der"], canonical: "van der" },
+      { words: ["de", "la"], canonical: "de la" },
+      { words: ["de", "los"], canonical: "de los" },
+      { words: ["von", "der"], canonical: "von der" },
+      { words: ["der"], canonical: "Der" },
+      { words: ["van"], canonical: "van" },
+      { words: ["von"], canonical: "von" },
+      { words: ["de"], canonical: "de" },
+      { words: ["den"], canonical: "den" },
+      { words: ["ten"], canonical: "ten" },
+      { words: ["ter"], canonical: "ter" },
+    ];
+    const takeTrailingParticle = (parts: string[]): string | null => {
+      for (const particle of particleSequences) {
+        if (parts.length < particle.words.length) continue
+        const tail = parts.slice(-particle.words.length).map(word => word.toLowerCase())
+        if (tail.every((word, index) => word === particle.words[index])) {
+          parts.splice(-particle.words.length)
+          return particle.canonical
+        }
+      }
+      return null
+    }
+    const canonicalizeFamily = (name: string): string => {
+      const words = name.trim().split(/\s+/)
+      for (const particle of particleSequences) {
+        const head = words.slice(0, particle.words.length).map(word => word.toLowerCase())
+        if (head.every((word, index) => word === particle.words[index])) {
+          return [particle.canonical, ...words.slice(particle.words.length)].join(" ")
+        }
+      }
+      return name.trim()
+    }
 
     let family: string;
     let givenParts: string[];
@@ -293,6 +326,8 @@ export async function POST(req: Request) {
       family = fam;
       // rest は ["Given1 Given2 …"] なので、結合して空白分割
       givenParts = rest.join(" ").trim().split(/\s+/);
+      const particle = takeTrailingParticle(givenParts)
+      if (particle) family = `${particle} ${family}`
       const override = familyInitialOverrides[family];
       if (override) {
         family = override.family;
@@ -301,7 +336,9 @@ export async function POST(req: Request) {
     } else {
       // 空白区切り "Given1 Given2 … Family"
       const parts = normalized.trim().split(/\s+/);
-      family = parts.pop()!;         // 最後を family
+      family = parts.pop()!;
+      const particle = takeTrailingParticle(parts)
+      if (particle) family = `${particle} ${family}`
       givenParts = parts;           // 残りが名の各パート
     }
 
@@ -309,7 +346,7 @@ export async function POST(req: Request) {
       .map(name => name[0].toUpperCase() + ".")
       .join(" ");
 
-    return { family: normalizeFamilyParticles(family), initials };
+    return { family: canonicalizeFamily(family), initials };
   }
 
   // 会議名略称マッピング
@@ -652,7 +689,7 @@ export async function POST(req: Request) {
       const formatListEng = (list: string[]) => {
         if (list.length === 1) return list[0]
         if (list.length === 2) return `${list[0]} and ${list[1]}`
-        return `${list.slice(0, -1).join(', ')} and ${list.slice(-1)[0]}`
+        return `${list.slice(0, -1).join(', ')}, and ${list.slice(-1)[0]}`
       }
       let normalAuthList: string[]
       if (isJa) {
